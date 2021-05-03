@@ -4,16 +4,15 @@ from __future__ import absolute_import
 import octoprint.plugin
 from octoprint.events import Events
 import os
-import dropbox
-from dropbox.files import WriteMode
-from dropbox.exceptions import ApiError, AuthError, BadInputError
+import smbclient
+from smbprotocol.exceptions import SMBException
 
 
-class DropboxTimelapsePlugin(octoprint.plugin.StartupPlugin,
-                             octoprint.plugin.TemplatePlugin,
-                             octoprint.plugin.SettingsPlugin,
-                             octoprint.plugin.EventHandlerPlugin,
-                             octoprint.plugin.AssetPlugin):
+class SMBTimelapsePlugin(octoprint.plugin.StartupPlugin,
+                         octoprint.plugin.TemplatePlugin,
+                         octoprint.plugin.SettingsPlugin,
+                         octoprint.plugin.EventHandlerPlugin,
+                         octoprint.plugin.AssetPlugin):
 
     def __init__(self):
         # fas
@@ -50,7 +49,10 @@ class DropboxTimelapsePlugin(octoprint.plugin.StartupPlugin,
 
     def get_settings_defaults(self):
         return dict(
-            api_token=None,
+            hostname=None,
+            sharename=None,
+            username=None,
+            password=None,
             delete_after_upload=False,
             additional_upload_events=[
                 {
@@ -71,7 +73,7 @@ class DropboxTimelapsePlugin(octoprint.plugin.StartupPlugin,
 
     def get_template_configs(self):
         return [
-            dict(type='settings', custom_bindings=True, template='dropbox_timelapse_settings.jinja2')
+            dict(type='settings', custom_bindings=True, template='dropbox_smb_settings.jinja2')
         ]
 
     def get_update_information(self):
@@ -83,21 +85,33 @@ class DropboxTimelapsePlugin(octoprint.plugin.StartupPlugin,
                 # version check: github repository
                 type="github_release",
                 user="jslay88",
-                repo="OctoPrint-Dropbox-Timelapse",
+                repo="OctoPrint-SMB-Timelapse",
                 current=self._plugin_version,
 
                 # update method: pip
-                pip="https://github.com/jslay88/OctoPrint-Dropbox-Timelapse/archive/{target_version}.zip"
+                pip="https://github.com/wcbzero/OctoPrint-SMB-Timelapse/archive/{target_version}.zip"
             )
         )
 
     @property
-    def api_token(self):
-        return self._settings.get(['api_token'])
+    def hostname(self):
+        return self._settings.get(['smb_timelapse_hostname'])
+
+    @property
+    def sharename(self):
+        return self._settings.get(['smb_timelapse_sharename'])
+
+    @property
+    def username(self):
+        return self._settings.get(['smb_timelapse_username'])
+
+    @property
+    def password(self):
+        return self._settings.get(['smb_timelapse_password'])
 
     @property
     def delete_after_upload(self):
-        return self._settings.get_boolean(['delete_after_upload'])
+        return self._settings.get_boolean(['smb_timelapse_delete_after_upload'])
 
     @property
     def additional_upload_events(self):
@@ -134,39 +148,36 @@ class DropboxTimelapsePlugin(octoprint.plugin.StartupPlugin,
         # for every event we are interested in
         file_name = os.path.basename(path)
 
-        if self.api_token:
-            db = dropbox.Dropbox(self.api_token)
+        if self.hostname and self.sharename and self.username and self.password:
+            smbclient.ClientConfig(username=self.username, password=self.password)
         else:
-            self._logger.info('No Dropbox API Token Defined! Cannot Upload Timelapse %s!', file_name)
+            self._logger.info('SMB upload information not set, update settings! Cannot Upload Timelapse %s!', file_name)
             return False
 
         delete = self.delete_after_upload
 
         try:
-            db.users_get_current_account()
-        except (
-                AuthError, BadInputError
-        ):
+            smbclient.register_session(self.hostname, username=self.username, password=self.password)
+        except SMBException as e:
             # catch more errors
             self._logger.exception(
-                'There was a problem authenticating to your Dropbox account.  Either the token is invalid, or it is '
-                'not in the correct format.  Cannot Upload Timelapse %s!', file_name)
+                'There was a problem connecting to your smb share.  Check SMB Settings'
+                '.  Cannot Upload Timelapse %s! Error %s', file_name, e)
             return False
 
-        with open(path, 'rb') as f:
-            self._logger.info('Uploading %s to Dropbox...', file_name)
-            try:
-                db.files_upload(f.read(), '/'+file_name, mode=WriteMode('overwrite'))
-                self._logger.info('Uploaded %s to Dropbox!', file_name)
-            except ApiError as e:
-                delete = False
-                if e.error.is_path() and e.error.get_path().error.is_insufficient_space():
-                    self._logger.info('Cannot upload to Dropbox! Insufficient space on Dropbox!')
-                elif e.user_message_text:
-                    self._logger.info(e.user_message_text)
-                else:
-                    self._logger.info(e)
-                return False
+        with open(path, 'rb') as local_file:
+            self._logger.info('Uploading %s to SMB Share...', file_name)
+
+            remote_file_path = r"\\{hostname}\{share}\{filename}".format(hostname=self.hostname,
+                                                                         share=self.sharename,
+                                                                         filename=file_name)
+            with smbclient.open_file(remote_file_path, mode="wb") as smbfd:
+                try:
+                    smbfd.write(local_file.read())
+                except SMBException as e:
+                    self._logger.error('Failed to write file to smb share. Cannot Upload Timelapse %s!. E'
+                                       'rror %s', file_name, e)
+                    return False
 
         if delete:
             try:
@@ -187,16 +198,15 @@ class DropboxTimelapsePlugin(octoprint.plugin.StartupPlugin,
         )
 
 
-__plugin_name__ = "Dropbox Timelapse Plugin"
+__plugin_name__ = "SMB Timelapse Plugin"
 __plugin_pythoncompat__ = ">=2.7,<4"
 
 
 def __plugin_load__():
     global __plugin_implementation__
-    __plugin_implementation__ = DropboxTimelapsePlugin()
+    __plugin_implementation__ = SMBTimelapsePlugin()
 
     global __plugin_hooks__
     __plugin_hooks__ = {
         "octoprint.plugin.softwareupdate.check_config": __plugin_implementation__.get_update_information
     }
-

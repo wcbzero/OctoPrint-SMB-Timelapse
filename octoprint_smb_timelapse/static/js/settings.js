@@ -5,7 +5,7 @@ $(function() {
         self.event_name = ko.observable(event_name);
         self.payload_path_key = ko.observable(payload_path_key);
     }
-    function DropboxTimelapseSettingsViewModel(parameters) {
+    function SMBTimelapseSettingsViewModel(parameters) {
         var self = this;
 
         self.settings = parameters[0];
@@ -13,7 +13,7 @@ $(function() {
 
         self.onBeforeBinding = function() {
             // Make plugin setting access a little more terse
-            self.plugin_settings = self.settings.settings.plugins.dropbox_timelapse;
+            self.plugin_settings = self.settings.settings.plugins.smb_timelapse;
         };
         // Add a custom event
         self.addUploadEvent = function() {
@@ -31,15 +31,15 @@ $(function() {
         // Listen for plugin messages
         // This could probably be made a bit simpler.
         self.onDataUpdaterPluginMessage = function (plugin, data) {
-            if (plugin !== "dropbox_timelapse") {
+            if (plugin !== "smb_timelapse") {
                 return;
             }
             switch (data.type) {
                 case 'upload-start':
                 {
                     var popup_options= {
-                        title: 'Uploading to Dropbox...',
-                        text: '\'' + data.file_name + '\' is uploading to dropbox now.',
+                        title: 'Uploading to SMB Share...',
+                        text: '\'' + data.file_name + '\' is uploading to SMB now.',
                         type: 'info',
                         hide: true,
                         desktop: {
@@ -53,8 +53,8 @@ $(function() {
                 case 'upload-success':
                 {
                     var popup_options= {
-                        title: 'Dropbox upload complete!',
-                        text: '\'' + data.file_name + '\' was uploaded to Dropbox successfully!.',
+                        title: 'SMB upload complete!',
+                        text: '\'' + data.file_name + '\' was uploaded to SMB successfully!.',
                         type: 'success',
                         hide: false,
                         desktop: {
@@ -69,8 +69,8 @@ $(function() {
                 case 'upload-failed':
                 {
                     var popup_options= {
-                        title: 'Droopbox upload failed!',
-                        text: '\'' + data.file_name + '\' failed to upload to Dropbox!  Please check plugin_dropbox_timelapse.log for more details.',
+                        title: 'SMB upload failed!',
+                        text: '\'' + data.file_name + '\' failed to upload to SMB!  Please check plugin_smb_timelapse.log for more details.',
                         type: 'error',
                         hide: false,
                         desktop: {
@@ -85,8 +85,8 @@ $(function() {
                 case 'delete-failed':
                 {
                     var popup_options= {
-                        title: 'Delete After Dropbox Upload failed!',
-                        text: '\'' + data.file_name + '\' could not be deleted.  Please check plugin_dropbox_timelapse.log for more details.',
+                        title: 'Delete After SMB Upload failed!',
+                        text: '\'' + data.file_name + '\' could not be deleted.  Please check plugin_smb_timelapse.log for more details.',
                         type: 'error',
                         hide: false,
                         desktop: {
@@ -98,8 +98,8 @@ $(function() {
                     // popup will take care of that!
                     break;
                 }
-                defalut:
-                    console.error("dropbox_timelapse - An unknown plugin message type of " + data.type + "was received.");
+                default:
+                    console.error("smb_timelapse - An unknown plugin message type of " + data.type + "was received.");
                     break;
             }
         };
@@ -138,8 +138,8 @@ $(function() {
     }
 
     OCTOPRINT_VIEWMODELS.push([
-        DropboxTimelapseSettingsViewModel,
+        SMBTimelapseSettingsViewModel,
         ["settingsViewModel"],
-        ["#dropbox_timelapse_settings"]
+        ["#smb_timelapse_settings"]
     ]);
 });
