@@ -147,6 +147,7 @@ class SMBTimelapsePlugin(octoprint.plugin.StartupPlugin,
         # just use the path to get the file name.  This requires fewer settings, and a name might not exist
         # for every event we are interested in
         file_name = os.path.basename(path)
+        smbclient.reset_connection_cache()
 
         if self.hostname and self.sharename and self.username and self.password:
             smbclient.ClientConfig(username=self.username, password=self.password)
@@ -158,6 +159,19 @@ class SMBTimelapsePlugin(octoprint.plugin.StartupPlugin,
 
         try:
             smbclient.register_session(self.hostname, username=self.username, password=self.password)
+            with open(path, 'rb') as local_file:
+                self._logger.info('Uploading %s to SMB Share...', file_name)
+
+                remote_file_path = r"\\{hostname}\{share}\{filename}".format(hostname=self.hostname,
+                                                                             share=self.sharename,
+                                                                             filename=file_name)
+                with smbclient.open_file(remote_file_path, mode="wb") as smbfd:
+                    try:
+                        smbfd.write(local_file.read())
+                    except SMBException as e:
+                        self._logger.error('Failed to write file to smb share. Cannot Upload Timelapse %s!. E'
+                                           'rror %s', file_name, e)
+                        return False
         except SMBException as e:
             # catch more errors
             self._logger.exception(
@@ -165,19 +179,6 @@ class SMBTimelapsePlugin(octoprint.plugin.StartupPlugin,
                 '.  Cannot Upload Timelapse %s! Error %s', file_name, e)
             return False
 
-        with open(path, 'rb') as local_file:
-            self._logger.info('Uploading %s to SMB Share...', file_name)
-
-            remote_file_path = r"\\{hostname}\{share}\{filename}".format(hostname=self.hostname,
-                                                                         share=self.sharename,
-                                                                         filename=file_name)
-            with smbclient.open_file(remote_file_path, mode="wb") as smbfd:
-                try:
-                    smbfd.write(local_file.read())
-                except SMBException as e:
-                    self._logger.error('Failed to write file to smb share. Cannot Upload Timelapse %s!. E'
-                                       'rror %s', file_name, e)
-                    return False
 
         if delete:
             try:
@@ -185,7 +186,7 @@ class SMBTimelapsePlugin(octoprint.plugin.StartupPlugin,
                 os.remove(path)
                 self._logger.info('Deleted %s from local disk.', file_name)
             except (OSError, IOError):
-                self._logger.exception('Failed to delte %s from local disk.', file_name)
+                self._logger.exception('Failed to delete %s from local disk.', file_name)
                 self._plugin_manager.send_plugin_message(
                     self._identifier, {'type': 'delete-failed', 'file_name': file_name}
                 )
